@@ -4,6 +4,9 @@ from aiogram.types import Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from textwrap import dedent
 
+from database import is_user_active
+
+
 class StartFeature:
     def __init__(self):
         self.router = Router(name="start")
@@ -13,6 +16,9 @@ class StartFeature:
         self.router.message.register(self.start, CommandStart())
 
     async def start(self, message: Message):
+        if not await is_user_active(message.from_user.id):
+            return await message.answer("🔐 Нужен ключ доступа\n Пиши /activate [ключ]")
+
         kb = InlineKeyboardBuilder()
         kb.button(text="📺 Обработать сигнал", callback_data="tt_page")
 
@@ -22,4 +28,5 @@ class StartFeature:
             dedent("⚡ Ты подключился к моему каналу. Здесь нет шума — только чистый контент."),
             reply_markup=kb.as_markup(),
         )
+        return None
 
