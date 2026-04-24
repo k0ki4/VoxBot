@@ -10,8 +10,8 @@ from routers.tiktok_r import TikTokRouter
 class EndKonf:
     def __init__(self, config):
         self.config = config
-        session = AiohttpSession(proxy="http://127.0.0.1:2080")
-        self.bot = Bot(token=config.bot.token, session=session)
+        #session = AiohttpSession(proxy="http://127.0.0.1:2080")
+        self.bot = Bot(token=config.bot.token)
         self.dp = Dispatcher()
 
         self._include_routers()

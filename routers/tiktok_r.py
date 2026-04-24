@@ -1,3 +1,5 @@
+import random
+
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, FSInputFile
 from aiogram.fsm.state import StatesGroup, State
@@ -7,6 +9,8 @@ import yt_dlp
 import asyncio
 import os
 import uuid
+
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
 # 📌 Состояния
@@ -19,6 +23,17 @@ class TikTokRouter:
         self.router = Router(name="TT")
         self.semaphore = asyncio.Semaphore(3)  # максимум 3 загрузки одновременно
         self._register()
+        self.need_more = ["Хочешь ещё? Я могу делать это весь день. ⚡",
+                          "Ну что, ещё одно видео? Я только разогрелся. 😎",
+                          "Продолжай 😈 Мне начинает нравиться твоя зависимость…",
+                          "Давай ещё 🔗, не стесняйся."
+                          ]
+
+    def more_kb(self):
+        kb = InlineKeyboardBuilder()
+        kb.button(text="⏳ Ещё раз!", callback_data="tt_page")
+        kb.adjust(1)
+        return kb.as_markup()
 
     def _register(self):
         self.router.callback_query.register(
@@ -56,8 +71,6 @@ class TikTokRouter:
             'outtmpl': filename,
             'quiet': True,
 
-            # ❗ ВСТАВЬ СВОЙ ПРОКСИ
-            'proxy': 'socks5://timeweb:timeweb@95.140.152.151:25344',
 
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
@@ -79,26 +92,31 @@ class TikTokRouter:
                 )
 
             if not os.path.exists(filename):
-                await message.answer("📡 Сигнал потерян… попробуй снова")
+                await message.answer("📡 Сигнал потерян… Попробуй что-то получше",
+                                     reply_markup=self.more_kb())
                 return
 
-            # 📏 Ограничение размера (50MB)
+            # Ограничение размера (50MB)
             if os.path.getsize(filename) > 50 * 1024 * 1024:
                 os.remove(filename)
-                await message.answer("⚠️ Сигнал слишком большой… не проходит через канал")
+                await message.answer("⚠️ Сигнал слишком большой… не проходит через канал",
+                                     reply_markup=self.more_kb())
                 return
 
             video = FSInputFile(filename)
             await message.answer_video(video)
+            await message.answer(text=random.choice(self.need_more),
+                                 reply_markup=self.more_kb())
 
             os.remove(filename)
 
         except Exception as e:
-            await message.answer("⚡ Ошибка в эфире… попробуй ещё раз")
+            await message.answer("⚡ Ошибка в эфире…", reply_markup=self.more_kb())
 
         await state.clear()
 
     async def invalid_link(self, message: Message):
         await message.answer(
-            "📡 Некорректный сигнал\n\nПередай ссылку с TikTok"
+            "📡 Некорректный сигнал\n\nПередай ссылку с TikTok",
+            reply_markup=self.more_kb()
         )
