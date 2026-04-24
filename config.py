@@ -26,7 +26,7 @@ class Config:
 def load_config() -> Config:
     return Config(
         bot=BotConfig(
-            token=os.getenv("TEST_TOKEN")
+            token=os.getenv("BOT_TOKEN")
         ),
         app=AppConfig(
             env=os.getenv("ENV", "dev"),
