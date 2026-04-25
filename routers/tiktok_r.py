@@ -10,6 +10,8 @@ import yt_dlp
 import asyncio
 import os
 import uuid
+import aiohttp
+from urllib.parse import urlparse, urlunparse
 
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -183,7 +185,7 @@ class TikTokRouter:
         self.router.message.register(
             self.download_tiktok,
             TikTokStates.waiting_for_link,
-            F.text.regexp(r"(https?://)?(www\.)?tiktok\.com/")
+            F.text.regexp(r"(https?://)?([\w\-]+\.)?tiktok\.com/")
         )
 
         self.router.message.register(
@@ -210,6 +212,11 @@ class TikTokRouter:
             return await message.answer("🔐 Нужен ключ доступа\n Пиши /activate [ключ]")
 
         url = message.text
+
+        try:
+            url = await self.normalize_tiktok_url(url)
+        except Exception:
+            pass
 
         await message.answer("📡 Сигнал принят… обработка началась ⚡")
 
@@ -272,3 +279,26 @@ class TikTokRouter:
             "📡 Некорректный сигнал\n\nПередай ссылку с TikTok",
             reply_markup=self.more_kb()
         )
+
+    async def normalize_tiktok_url(self, url: str) -> str:
+        # добавляем https если нет
+        if not url.startswith("http"):
+            url = "https://" + url
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, allow_redirects=True) as resp:
+                final_url = str(resp.url)
+
+        # убираем мусорные query-параметры
+        parsed = urlparse(final_url)
+
+        clean_url = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            '',  # params
+            '',  # query удаляем
+            ''  # fragment
+        ))
+
+        return clean_url
