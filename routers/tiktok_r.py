@@ -253,7 +253,7 @@ class TikTokRouter:
                 return
 
             # Ограничение размера (50MB)
-            if os.path.getsize(filename) > 50 * 1024 * 1024:
+            if os.path.getsize(filename) > 120 * 1024 * 1024:
                 os.remove(filename)
                 await message.answer("⚠️ Сигнал слишком большой… не проходит через канал",
                                      reply_markup=self.more_kb())
