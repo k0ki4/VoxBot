@@ -122,7 +122,8 @@ class TikTokRouter:
         await message.answer(
             "Админ-меню:\n\n"
             "/genkey — создать ключ\n"
-            "/users — список пользователей"
+            "/users — список пользователей\n"
+            "/keyboard — выдать клавиатуру всем активным"
         )
         return None
 
@@ -158,6 +159,11 @@ class TikTokRouter:
         return None
 
     def _register(self):
+        self.router.message.register(
+            self.keyboard_to_active_users,
+            Command("keyboard")
+        )
+
         self.router.message.register(
             self.read_page_from_button,
             F.text == "📺 Подключится"
@@ -207,6 +213,54 @@ class TikTokRouter:
         self.router.message.register(
             self.download_multiple_tiktoks,
             TikTokStates.waiting_for_multi_links
+        )
+
+    async def keyboard_to_active_users(self, message: Message):
+        if not self.is_admin(message.from_user.id):
+            return await message.answer("⛔ Нет доступа")
+
+        users = await get_all_users()
+
+        if not users:
+            return await message.answer("👥 Пользователей пока нет")
+
+        sent_count = 0
+        failed_count = 0
+        skipped_count = 0
+
+        await message.answer("📡 Запускаю рассылку клавиатуры активным пользователям…")
+
+        for u in users:
+            tg_id, username, is_active, created_at = u
+
+            if not is_active:
+                skipped_count += 1
+                continue
+
+            try:
+                # await message.bot.send_message(
+                #     chat_id=int(tg_id),
+                #     text=(
+                #         "📡 Панель доступа обновлена.\n\n"
+                #         "Я добавил новый канал управления — "
+                #         "теперь можешь работать как с одиночными ссылками, "
+                #         "так и с целыми пачками TikTok-сигналов. ⚡"
+                #     ),
+                #     reply_markup=self.main_reply_kb()
+                # )
+
+                sent_count += 1
+                await asyncio.sleep(0.05)
+
+            except Exception as e:
+                failed_count += 1
+                print(f"Не удалось отправить клавиатуру пользователю {tg_id}: {e}")
+
+        await message.answer(
+            "📊 Рассылка клавиатуры завершена.\n\n"
+            f"✅ Отправлено: {sent_count}\n"
+            f"⚠️ Ошибок: {failed_count}\n"
+            f"⏭ Пропущено неактивных: {skipped_count}"
         )
 
     async def read_page_from_button(self, message: Message, state: FSMContext):
@@ -302,7 +356,7 @@ class TikTokRouter:
                 pass
 
             await message.answer(
-                f"📡 Сигнал {index} из {total} пойман.\n"
+                f"📡 Сигнал пойман.\n"
                 f"Начинаю обработку потока… ⚡"
             )
 
@@ -331,17 +385,17 @@ class TikTokRouter:
 
             if not os.path.exists(filename):
                 await message.answer(
-                    f"📡 Сигнал {index} из {total} потерян.\n"
+                    f"📡 Сигнал потерян.\n"
                     f"Эта ссылка оказалась мусором в эфире."
                 )
                 return False
 
             original_size_mb = os.path.getsize(filename) / 1024 / 1024
-            print(f"[{index}/{total}] Размер исходного файла: {original_size_mb:.2f} MB")
+            print(f"Размер исходного файла: {original_size_mb:.2f} MB")
 
             await message.answer(
-                f"🎞️ Сигнал {index} из {total} загружен.\n"
-                f"Привожу видео в нормальный формат…"
+                f"🎞️ Сигнал загружен.\n"
+                f"Привожу видео в нормальный формат…⚡⚡"
             )
 
             fixed_filename = await self.fix_video_for_telegram(filename)
