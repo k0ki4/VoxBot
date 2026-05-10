@@ -467,7 +467,6 @@ class TikTokRouter:
 
         status_message = await message.answer(
             "📡 Сигнал принят\n\n"
-            f"[{self.make_progress_bar(0, 1)}] 0/1\n\n"
             "⚙️ Статус: начинаю обработку потока…"
         )
 
@@ -482,8 +481,7 @@ class TikTokRouter:
         if ok:
             try:
                 await status_message.edit_text(
-                    "✅ Сигнал доставлен\n\n"
-                    f"[{self.make_progress_bar(1, 1)}] 1/1\n\n"
+                    "⚡ Сигнал доставлен\n\n"
                     "Видео прошло через сеть и готово к просмотру. ⚡"
                 )
             except Exception:
@@ -497,7 +495,6 @@ class TikTokRouter:
             try:
                 await status_message.edit_text(
                     "⚡ Сигнал сорвался\n\n"
-                    f"[{self.make_progress_bar(1, 1)}] 1/1\n\n"
                     "Я поймал помехи вместо нормального потока. Кинь другой источник."
                 )
             except Exception:
