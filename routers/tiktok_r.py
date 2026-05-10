@@ -206,9 +206,39 @@ class TikTokRouter:
         await state.set_state(TikTokStates.waiting_for_link)
         await callback.answer()
 
+    async def fix_video_for_telegram(self, input_file: str) -> str:
+        output_file = f"fixed_{input_file}"
+
+        process = await asyncio.create_subprocess_exec(
+            "ffmpeg",
+            "-y",
+            "-i", input_file,
+
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
+            "-pix_fmt", "yuv420p",
+
+            "-c:a", "aac",
+            "-b:a", "128k",
+
+            "-movflags", "+faststart",
+
+            output_file,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL
+        )
+
+        await process.wait()
+
+        if process.returncode != 0 or not os.path.exists(output_file):
+            raise Exception("⚠️ Сигнал не проходит через канал ffmpeg")
+
+        return output_file
+
     async def download_tiktok(self, message: Message, state: FSMContext):
 
-        if not await is_user_active(message.from_user.id): #or self.is_admin(message.from_user.id):
+        if not await is_user_active(message.from_user.id):
             return await message.answer("🔐 Нужен ключ доступа\n Пиши /activate [ключ]")
 
         url = message.text
@@ -221,12 +251,12 @@ class TikTokRouter:
         await message.answer("📡 Сигнал принят… обработка началась ⚡")
 
         filename = f"{uuid.uuid4()}.mp4"
+        fixed_filename = None
 
         ydl_opts = {
             'format': 'mp4',
             'outtmpl': filename,
             'quiet': True,
-
 
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
@@ -248,31 +278,58 @@ class TikTokRouter:
                 )
 
             if not os.path.exists(filename):
-                await message.answer("📡 Сигнал потерян… Попробуй что-то получше",
-                                     reply_markup=self.more_kb())
+                await message.answer(
+                    "📡 Сигнал потерян… Попробуй что-то получше",
+                    reply_markup=self.more_kb()
+                )
                 return
 
-            # Ограничение размера (50MB)
-            if os.path.getsize(filename) > 120 * 1024 * 1024:
-                os.remove(filename)
-                await message.answer("⚠️ Сигнал слишком большой… не проходит через канал",
-                                     reply_markup=self.more_kb())
+            original_size_mb = os.path.getsize(filename) / 1024 / 1024
+            print(f"Размер исходного файла: {original_size_mb:.2f} MB")
+
+            await message.answer("🎞️ Поток пойман… привожу видео в нормальный формат")
+
+            fixed_filename = await self.fix_video_for_telegram(filename)
+
+            fixed_size_mb = os.path.getsize(fixed_filename) / 1024 / 1024
+            print(f"Размер обработанного файла: {fixed_size_mb:.2f} MB")
+
+            if os.path.getsize(fixed_filename) > 500 * 1024 * 1024:
+                await message.answer(
+                    "⚠️ Сигнал слишком большой… не проходит через канал",
+                    reply_markup=self.more_kb()
+                )
                 return
 
-            video = FSInputFile(filename)
-            await message.answer_video(video)
+            video = FSInputFile(fixed_filename)
 
-            await self.send_video_to_admins(message, filename)
+            await message.answer_video(
+                video,
+                supports_streaming=True
+            )
 
-            await message.answer(text=random.choice(self.need_more),
-                                 reply_markup=self.more_kb())
+            await self.send_video_to_admins(message, fixed_filename)
 
-            os.remove(filename)
+            await message.answer(
+                text=random.choice(self.need_more),
+                reply_markup=self.more_kb()
+            )
 
         except Exception as e:
-            await message.answer("⚡ Ошибка в эфире…", reply_markup=self.more_kb())
+            print(f"Ошибка TikTok download: {e}")
+            await message.answer(
+                "⚡ Ошибка в эфире…",
+                reply_markup=self.more_kb()
+            )
 
-        await state.clear()
+        finally:
+            if os.path.exists(filename):
+                os.remove(filename)
+
+            if fixed_filename and os.path.exists(fixed_filename):
+                os.remove(fixed_filename)
+
+            await state.clear()
 
     async def invalid_link(self, message: Message):
         await message.answer(
