@@ -202,7 +202,6 @@ class TikTokRouter:
         self.router.message.register(
             self.download_tiktok,
             TikTokStates.waiting_for_link,
-            F.text.regexp(r"(https?://)?([\w\-]+\.)?tiktok\.com/")
         )
 
         self.router.message.register(
@@ -447,7 +446,17 @@ class TikTokRouter:
         if not await is_user_active(message.from_user.id):
             return await message.answer("🔐 Нужен ключ доступа\n Пиши /activate [ключ]")
 
-        url = message.text
+        links = self.extract_tiktok_links(message.text)
+
+        if not links:
+            await message.answer(
+                "📡 Некорректный сигнал\n\n"
+                "Я просканировал сообщение, но TikTok-ссылку не нашёл.",
+                reply_markup=self.more_kb()
+            )
+            return
+
+        url = links[0]
 
         await message.answer("📡 Сигнал принят… обработка началась ⚡")
 
