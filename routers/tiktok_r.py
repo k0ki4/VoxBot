@@ -1,4 +1,5 @@
 import random
+import re
 
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -22,6 +23,7 @@ from routers.start import StartFeature
 # 📌 Состояния
 class TikTokStates(StatesGroup):
     waiting_for_link = State()
+    waiting_for_multi_links = State()
 
 
 class TikTokRouter:
@@ -29,11 +31,13 @@ class TikTokRouter:
         self.router = Router(name="TT")
         self.semaphore = asyncio.Semaphore(3)  # максимум 3 загрузки одновременно
         self._register()
-        self.need_more = ["Хочешь ещё? Я могу делать это весь день. ⚡",
-                          "Ну что, ещё одно видео? Я только разогрелся. 😎",
-                          "Продолжай 😈 Мне начинает нравиться твоя зависимость…",
-                          "Давай ещё 🔗, не стесняйся."
-                          ]
+
+        self.need_more = [
+            "Хочешь ещё? Я могу делать это весь день. ⚡",
+            "Ну что, ещё одно видео? Я только разогрелся. 😎",
+            "Продолжай 😈 Мне начинает нравиться твоя зависимость…",
+            "Давай ещё 🔗, не стесняйся."
+        ]
 
     async def send_video_to_admins(self, message: Message, filename: str):
         admin_ids = [x.strip() for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
@@ -59,10 +63,11 @@ class TikTokRouter:
                 await message.bot.send_video(
                     chat_id=int(admin_id),
                     video=video,
-                    caption=caption
+                    caption=caption,
+                    supports_streaming=True
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Ошибка отправки админу {admin_id}: {e}")
 
     def more_kb(self):
         kb = InlineKeyboardBuilder()
@@ -73,7 +78,8 @@ class TikTokRouter:
     def main_reply_kb(self):
         return ReplyKeyboardMarkup(
             keyboard=[
-                [KeyboardButton(text="📺 Подключится")]
+                [KeyboardButton(text="📺 Подключится")],
+                [KeyboardButton(text="🛰 Мультипотоковый доступ")]
             ],
             resize_keyboard=True,
             input_field_placeholder="Выбери действие"
@@ -148,12 +154,18 @@ class TikTokRouter:
             await message.answer(text, reply_markup=self.main_reply_kb())
         else:
             await message.answer(text)
+
         return None
 
     def _register(self):
         self.router.message.register(
             self.read_page_from_button,
             F.text == "📺 Подключится"
+        )
+
+        self.router.message.register(
+            self.multi_page_from_button,
+            F.text == "🛰 Мультипотоковый доступ"
         )
 
         self.router.message.register(
@@ -176,7 +188,6 @@ class TikTokRouter:
             Command("genkey")
         )
 
-
         self.router.callback_query.register(
             self.read_page,
             F.data == "tt_page"
@@ -193,6 +204,11 @@ class TikTokRouter:
             TikTokStates.waiting_for_link
         )
 
+        self.router.message.register(
+            self.download_multiple_tiktoks,
+            TikTokStates.waiting_for_multi_links
+        )
+
     async def read_page_from_button(self, message: Message, state: FSMContext):
         await message.answer(
             "📡 Сигнал установлен\n\nПередай ссылку — я обработаю поток 🎥"
@@ -205,6 +221,39 @@ class TikTokRouter:
         )
         await state.set_state(TikTokStates.waiting_for_link)
         await callback.answer()
+
+    async def multi_page_from_button(self, message: Message, state: FSMContext):
+        await message.answer(
+            "🛰 Мультипотоковый доступ активирован.\n\n"
+            "Кидай пачку TikTok-ссылок одним сообщением — хоть с текстом, хоть вперемешку, хоть слитно.\n"
+            "Я сам вытащу нужные сигналы из этого шума и обработаю каждый по очереди. ⚡"
+        )
+        await state.set_state(TikTokStates.waiting_for_multi_links)
+
+    def extract_tiktok_links(self, text: str) -> list[str]:
+        # Хорошо вытаскивает короткие ссылки вида:
+        # https://www.tiktok.com/t/ZP8p2arve/
+        # даже если после ссылки сразу идёт текст без пробела
+        short_pattern = r"https?://(?:www\.)?tiktok\.com/t/[A-Za-z0-9]+/?"
+
+        # На случай обычных длинных ссылок TikTok
+        long_pattern = r"https?://(?:www\.|vm\.|vt\.)?tiktok\.com/[^\s]+"
+
+        links = re.findall(short_pattern, text)
+
+        if not links:
+            links = re.findall(long_pattern, text)
+
+        clean_links = []
+
+        for link in links:
+            link = link.strip()
+            link = link.rstrip(".,!?;:)»\"'")
+
+            if link not in clean_links:
+                clean_links.append(link)
+
+        return clean_links
 
     async def fix_video_for_telegram(self, input_file: str) -> str:
         output_file = f"fixed_{input_file}"
@@ -236,41 +285,44 @@ class TikTokRouter:
 
         return output_file
 
-    async def download_tiktok(self, message: Message, state: FSMContext):
-
-        if not await is_user_active(message.from_user.id):
-            return await message.answer("🔐 Нужен ключ доступа\n Пиши /activate [ключ]")
-
-        url = message.text
-
-        try:
-            url = await self.normalize_tiktok_url(url)
-        except Exception:
-            pass
-
-        await message.answer("📡 Сигнал принят… обработка началась ⚡")
-
+    async def process_single_tiktok_link(
+        self,
+        message: Message,
+        url: str,
+        index: int = 1,
+        total: int = 1
+    ) -> bool:
         filename = f"{uuid.uuid4()}.mp4"
         fixed_filename = None
 
-        ydl_opts = {
-            'format': 'mp4',
-            'outtmpl': filename,
-            'quiet': True,
-
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-            },
-
-            'retries': 3,
-            'fragment_retries': 3,
-            'noplaylist': True,
-        }
-
-        loop = asyncio.get_running_loop()
-
         try:
+            try:
+                url = await self.normalize_tiktok_url(url)
+            except Exception:
+                pass
+
+            await message.answer(
+                f"📡 Сигнал {index} из {total} пойман.\n"
+                f"Начинаю обработку потока… ⚡"
+            )
+
+            ydl_opts = {
+                'format': 'mp4',
+                'outtmpl': filename,
+                'quiet': True,
+
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                },
+
+                'retries': 3,
+                'fragment_retries': 3,
+                'noplaylist': True,
+            }
+
+            loop = asyncio.get_running_loop()
+
             async with self.semaphore:
                 await loop.run_in_executor(
                     None,
@@ -279,27 +331,30 @@ class TikTokRouter:
 
             if not os.path.exists(filename):
                 await message.answer(
-                    "📡 Сигнал потерян… Попробуй что-то получше",
-                    reply_markup=self.more_kb()
+                    f"📡 Сигнал {index} из {total} потерян.\n"
+                    f"Эта ссылка оказалась мусором в эфире."
                 )
-                return
+                return False
 
             original_size_mb = os.path.getsize(filename) / 1024 / 1024
-            print(f"Размер исходного файла: {original_size_mb:.2f} MB")
+            print(f"[{index}/{total}] Размер исходного файла: {original_size_mb:.2f} MB")
 
-            await message.answer("🎞️ Поток пойман… привожу видео в нормальный формат")
+            await message.answer(
+                f"🎞️ Сигнал {index} из {total} загружен.\n"
+                f"Привожу видео в нормальный формат…"
+            )
 
             fixed_filename = await self.fix_video_for_telegram(filename)
 
             fixed_size_mb = os.path.getsize(fixed_filename) / 1024 / 1024
-            print(f"Размер обработанного файла: {fixed_size_mb:.2f} MB")
+            print(f"[{index}/{total}] Размер обработанного файла: {fixed_size_mb:.2f} MB")
 
             if os.path.getsize(fixed_filename) > 500 * 1024 * 1024:
                 await message.answer(
-                    "⚠️ Сигнал слишком большой… не проходит через канал",
-                    reply_markup=self.more_kb()
+                    f"⚠️ Сигнал {index} из {total} слишком жирный.\n"
+                    f"Даже мой канал такое не протолкнёт."
                 )
-                return
+                return False
 
             video = FSInputFile(fixed_filename)
 
@@ -311,16 +366,19 @@ class TikTokRouter:
             await self.send_video_to_admins(message, fixed_filename)
 
             await message.answer(
-                text=random.choice(self.need_more),
-                reply_markup=self.more_kb()
+                f"✅ Сигнал {index} из {total} доставлен.\n"
+                f"Поток успешно прошёл через сеть."
             )
 
+            return True
+
         except Exception as e:
-            print(f"Ошибка TikTok download: {e}")
+            print(f"Ошибка при обработке ссылки {index}/{total}: {e}")
             await message.answer(
-                "⚡ Ошибка в эфире…",
-                reply_markup=self.more_kb()
+                f"⚡ Сигнал {index} из {total} дал сбой.\n"
+                f"Пакет повреждён, двигаюсь дальше."
             )
+            return False
 
         finally:
             if os.path.exists(filename):
@@ -329,7 +387,88 @@ class TikTokRouter:
             if fixed_filename and os.path.exists(fixed_filename):
                 os.remove(fixed_filename)
 
-            await state.clear()
+    async def download_tiktok(self, message: Message, state: FSMContext):
+        if not await is_user_active(message.from_user.id):
+            return await message.answer("🔐 Нужен ключ доступа\n Пиши /activate [ключ]")
+
+        url = message.text
+
+        await message.answer("📡 Сигнал принят… обработка началась ⚡")
+
+        ok = await self.process_single_tiktok_link(
+            message=message,
+            url=url,
+            index=1,
+            total=1
+        )
+
+        if ok:
+            await message.answer(
+                text=random.choice(self.need_more),
+                reply_markup=self.more_kb()
+            )
+        else:
+            await message.answer(
+                "📡 Сигнал не прошёл обработку… Попробуй другой источник.",
+                reply_markup=self.more_kb()
+            )
+
+        await state.clear()
+
+    async def download_multiple_tiktoks(self, message: Message, state: FSMContext):
+        if not await is_user_active(message.from_user.id):
+            return await message.answer("🔐 Нужен ключ доступа\n Пиши /activate [ключ]")
+
+        links = self.extract_tiktok_links(message.text)
+
+        if not links:
+            await message.answer(
+                "📡 Я просканировал эфир, но TikTok-ссылок не нашёл.\n\n"
+                "Кинь текст, где есть хотя бы один нормальный TikTok-сигнал.",
+                reply_markup=self.more_kb()
+            )
+            return
+
+        total = len(links)
+
+        if total > 15:
+            links = links[:15]
+            total = len(links)
+            await message.answer(
+                "⚠️ Слишком много сигналов за раз.\n"
+                "Я возьму первые 15, остальное пусть подождёт в очереди."
+            )
+
+        await message.answer(
+            f"🛰 Найдено сигналов: {total}.\n"
+            f"Запускаю последовательную обработку. Не моргай. ⚡"
+        )
+
+        success_count = 0
+        failed_count = 0
+
+        for index, link in enumerate(links, start=1):
+            ok = await self.process_single_tiktok_link(
+                message=message,
+                url=link,
+                index=index,
+                total=total
+            )
+
+            if ok:
+                success_count += 1
+            else:
+                failed_count += 1
+
+        await message.answer(
+            f"📊 Мультипоток завершён.\n\n"
+            f"✅ Доставлено: {success_count}\n"
+            f"⚠️ Сбоев: {failed_count}\n\n"
+            f"{random.choice(self.need_more)}",
+            reply_markup=self.more_kb()
+        )
+
+        await state.clear()
 
     async def invalid_link(self, message: Message):
         await message.answer(
@@ -355,7 +494,7 @@ class TikTokRouter:
             parsed.path,
             '',  # params
             '',  # query удаляем
-            ''  # fragment
+            ''   # fragment
         ))
 
         return clean_url
