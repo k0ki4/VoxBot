@@ -201,8 +201,7 @@ class TikTokRouter:
 
         self.router.message.register(
             self.download_tiktok,
-            TikTokStates.waiting_for_link,
-            F.text.regexp(r"(https?://)?([\w\-]+\.)?tiktok\.com/")
+            TikTokStates.waiting_for_link
         )
 
         self.router.message.register(
@@ -239,12 +238,14 @@ class TikTokRouter:
 
             try:
                 await message.bot.send_message(
-                    chat_id=int(1240611937),
+                    chat_id=int(tg_id),
                     text=(
                         "📡 Панель доступа обновлена.\n\n"
                         "Я добавил новый канал управления — "
                         "теперь можешь работать как с одиночными ссылками, "
-                        "так и с целыми пачками TikTok-сигналов. ⚡"
+                        "так и с целыми пачками TikTok-сигналов. ⚡\n"
+                        " - 'Посмотрите эту публикацию в TikTok!  https://www.tiktok.com/t/fgbrs4rfg'\n"
+                        "Да! Так тоже теперь работает!"
                     ),
                     reply_markup=self.main_reply_kb()
                 )
@@ -356,7 +357,7 @@ class TikTokRouter:
                 pass
 
             await message.answer(
-                f"📡 Сигнал пойман.\n"
+                f"📡 Сигнал {index} из {total} пойман.\n"
                 f"Начинаю обработку потока… ⚡"
             )
 
@@ -385,7 +386,7 @@ class TikTokRouter:
 
             if not os.path.exists(filename):
                 await message.answer(
-                    f"📡 Сигнал потерян.\n"
+                    f"📡 Сигнал {index} потерян.\n"
                     f"Эта ссылка оказалась мусором в эфире."
                 )
                 return False
@@ -394,7 +395,7 @@ class TikTokRouter:
             print(f"Размер исходного файла: {original_size_mb:.2f} MB")
 
             await message.answer(
-                f"🎞️ Сигнал загружен.\n"
+                f"📡 Сигнал {index} загружен.\n"
                 f"Привожу видео в нормальный формат…⚡⚡"
             )
 
@@ -405,7 +406,7 @@ class TikTokRouter:
 
             if os.path.getsize(fixed_filename) > 500 * 1024 * 1024:
                 await message.answer(
-                    f"⚠️ Сигнал {index} из {total} слишком жирный.\n"
+                    f"⚠️ Сигнал {index} слишком жирный.\n"
                     f"Даже мой канал такое не протолкнёт."
                 )
                 return False
@@ -420,7 +421,7 @@ class TikTokRouter:
             await self.send_video_to_admins(message, fixed_filename)
 
             await message.answer(
-                f"✅ Сигнал {index} из {total} доставлен.\n"
+                f"⚡ Сигнал {index} из {total} доставлен.\n"
                 f"Поток успешно прошёл через сеть."
             )
 
