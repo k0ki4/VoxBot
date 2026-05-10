@@ -238,16 +238,16 @@ class TikTokRouter:
                 continue
 
             try:
-                # await message.bot.send_message(
-                #     chat_id=int(tg_id),
-                #     text=(
-                #         "📡 Панель доступа обновлена.\n\n"
-                #         "Я добавил новый канал управления — "
-                #         "теперь можешь работать как с одиночными ссылками, "
-                #         "так и с целыми пачками TikTok-сигналов. ⚡"
-                #     ),
-                #     reply_markup=self.main_reply_kb()
-                # )
+                await message.bot.send_message(
+                    chat_id=int(1240611937),
+                    text=(
+                        "📡 Панель доступа обновлена.\n\n"
+                        "Я добавил новый канал управления — "
+                        "теперь можешь работать как с одиночными ссылками, "
+                        "так и с целыми пачками TikTok-сигналов. ⚡"
+                    ),
+                    reply_markup=self.main_reply_kb()
+                )
 
                 sent_count += 1
                 await asyncio.sleep(0.05)
