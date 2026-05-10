@@ -446,23 +446,63 @@ class TikTokRouter:
         if not await is_user_active(message.from_user.id):
             return await message.answer("🔐 Нужен ключ доступа\n Пиши /activate [ключ]")
 
-        url = message.text
+        links = self.extract_tiktok_links(message.text)
 
-        await message.answer("📡 Сигнал принят… обработка началась ⚡")
+        if not links:
+            await message.answer(
+                "📡 Некорректный сигнал\n\n"
+                "Я просканировал сообщение, но TikTok-ссылку не нашёл.\n"
+                "Кинь ссылку отдельно или вместе с текстом — я сам её вытащу.",
+                reply_markup=self.more_kb()
+            )
+            return
+
+        url = links[0]
+
+        if len(links) > 1:
+            await message.answer(
+                f"📡 В эфире найдено несколько сигналов: {len(links)}.\n"
+                f"Одиночный канал забирает первый. Для пачки используй 🛰 Мультипотоковый доступ."
+            )
+
+        status_message = await message.answer(
+            "📡 Сигнал принят\n\n"
+            f"[{self.make_progress_bar(0, 1)}] 0/1\n\n"
+            "⚙️ Статус: начинаю обработку потока…"
+        )
 
         ok = await self.process_single_tiktok_link(
             message=message,
             url=url,
             index=1,
-            total=1
+            total=1,
+            status_message=status_message
         )
 
         if ok:
+            try:
+                await status_message.edit_text(
+                    "✅ Сигнал доставлен\n\n"
+                    f"[{self.make_progress_bar(1, 1)}] 1/1\n\n"
+                    "Видео прошло через сеть и готово к просмотру. ⚡"
+                )
+            except Exception:
+                pass
+
             await message.answer(
                 text=random.choice(self.need_more),
                 reply_markup=self.more_kb()
             )
         else:
+            try:
+                await status_message.edit_text(
+                    "⚡ Сигнал сорвался\n\n"
+                    f"[{self.make_progress_bar(1, 1)}] 1/1\n\n"
+                    "Я поймал помехи вместо нормального потока. Кинь другой источник."
+                )
+            except Exception:
+                pass
+
             await message.answer(
                 "📡 Сигнал не прошёл обработку… Попробуй другой источник.",
                 reply_markup=self.more_kb()
