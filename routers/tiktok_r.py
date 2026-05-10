@@ -201,7 +201,8 @@ class TikTokRouter:
 
         self.router.message.register(
             self.download_tiktok,
-            TikTokStates.waiting_for_link
+            TikTokStates.waiting_for_link,
+            F.text.regexp(r"(https?://)?([\w\-]+\.)?tiktok\.com/")
         )
 
         self.router.message.register(
@@ -244,7 +245,7 @@ class TikTokRouter:
                         "Я добавил новый канал управления — "
                         "теперь можешь работать как с одиночными ссылками, "
                         "так и с целыми пачками TikTok-сигналов. ⚡\n"
-                        " - 'Посмотрите эту публикацию в TikTok!  https://www.tiktok.com/t/fgbrs4rfg'\n"
+                        " - 'Посмотрите эту публикацию в TikTok!  https://www.tiktok.com/t/BuKvATut'\n"
                         "Да! Так тоже теперь работает!"
                     ),
                     reply_markup=self.main_reply_kb()
@@ -446,24 +447,7 @@ class TikTokRouter:
         if not await is_user_active(message.from_user.id):
             return await message.answer("🔐 Нужен ключ доступа\n Пиши /activate [ключ]")
 
-        links = self.extract_tiktok_links(message.text)
-
-        if not links:
-            await message.answer(
-                "📡 Некорректный сигнал\n\n"
-                "Я просканировал сообщение, но TikTok-ссылку не нашёл.\n"
-                "Кинь ссылку отдельно или вместе с текстом — я сам её вытащу.",
-                reply_markup=self.more_kb()
-            )
-            return
-
-        url = links[0]
-
-        if len(links) > 1:
-            await message.answer(
-                f"📡 В эфире найдено несколько сигналов: {len(links)}.\n"
-                f"Одиночный канал забирает первый. Для пачки используй 🛰 Мультипотоковый доступ."
-            )
+        url = message.text
 
         await message.answer("📡 Сигнал принят… обработка началась ⚡")
 
