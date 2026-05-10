@@ -465,41 +465,21 @@ class TikTokRouter:
                 f"Одиночный канал забирает первый. Для пачки используй 🛰 Мультипотоковый доступ."
             )
 
-        status_message = await message.answer(
-            "📡 Сигнал принят\n\n"
-            "⚙️ Статус: начинаю обработку потока…"
-        )
+        await message.answer("📡 Сигнал принят… обработка началась ⚡")
 
         ok = await self.process_single_tiktok_link(
             message=message,
             url=url,
             index=1,
-            total=1,
-            status_message=status_message
+            total=1
         )
 
         if ok:
-            try:
-                await status_message.edit_text(
-                    "⚡ Сигнал доставлен\n\n"
-                    "Видео прошло через сеть и готово к просмотру. ⚡"
-                )
-            except Exception:
-                pass
-
             await message.answer(
                 text=random.choice(self.need_more),
                 reply_markup=self.more_kb()
             )
         else:
-            try:
-                await status_message.edit_text(
-                    "⚡ Сигнал сорвался\n\n"
-                    "Я поймал помехи вместо нормального потока. Кинь другой источник."
-                )
-            except Exception:
-                pass
-
             await message.answer(
                 "📡 Сигнал не прошёл обработку… Попробуй другой источник.",
                 reply_markup=self.more_kb()
